@@ -437,12 +437,12 @@ int main(int argc, char *argv[])
         DrawRectangleRoundedLinesEx(guiBorder, 0.1f, 0, 1.0f, BLACK);
         DrawText("RESET", resetRectangle.x + 60, resetRectangle.y + 8, 18, BLACK);
 
+        DrawText("STEP DURATION:", 510, 155, 20, BLACK);
+        GuiSliderBar(Rectangle{555, 180, 105, 20}, "Seconds:", TextFormat("%.2f", stepDuration), &stepDuration, 0.0f, 3.0f);
+
         DrawText("ALGORITHM:", 535, 95, 20, BLACK);
         if (GuiDropdownBox(Rectangle{505, 120, 180, 20}, "GRAHAM'S SCAN;JARVIS MATCH", &algorithm, algorithmEditMode))
             algorithmEditMode = !algorithmEditMode;
-
-        DrawText("STEP DURATION:", 510, 155, 20, BLACK);
-        GuiSliderBar(Rectangle{555, 180, 105, 20}, "Seconds:", TextFormat("%.2f", stepDuration), &stepDuration, 0.0f, 3.0f);
 
         EndDrawing();
     }

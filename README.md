@@ -1,6 +1,13 @@
 # Hullifier
 
-Visualizes convex hull algorithms.
+<p align="center">    
+    <img src="data/demo.gif" />
+</p>
+
+<p align="center">
+    Visualizes convex hull algorithms.
+</p>
+
 
 ## Building
 
@@ -12,7 +19,7 @@ $ git submodule update
 $ ./build.ps1
 ```
 
-After building you should have an executable named `hullifier`.
+After building you should have an executable named `hullifier`. Currently `hullifier` only supports building on Windows.
 
 ## Usage
 
