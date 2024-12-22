@@ -195,11 +195,11 @@ struct PointCompare
 };
 
 /**
- * Produces a vector of points that produce the Convex Hull using Grahams Scan.
+ * Produces a vector of steps that show the procedure of forming the Convex Hull using Grahams Scan.
  *
  * Time complexity for this is n log n.
  */
-std::vector<Step> grahamScanPoints(std::vector<std::pair<int, int>> &points)
+std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
 {
     std::vector<Step> steps;
     int n = points.size();
@@ -209,10 +209,12 @@ std::vector<Step> grahamScanPoints(std::vector<std::pair<int, int>> &points)
         if (!(points[0] == points[n - 1]))
             points.push_back(points[0]);
 
+        steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), points});
         return steps;
     }
 
     // Find the point for which Y is lowest and in case of tie the rightmost w.r.t X.
+    // Here lowest technically means highest since Y = 0 is at the top of the window.
     int point0 = 0;
     for (int i = 1; i < n; i++)
     {
@@ -250,6 +252,71 @@ std::vector<Step> grahamScanPoints(std::vector<std::pair<int, int>> &points)
 }
 
 /**
+ * Produces a vector of steps that show the procedure of forming the Convex Hull using Jarvis March.
+ *
+ * Time complexity for this is n*m.
+ */
+std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
+{
+    std::vector<Step> steps;
+    int n = points.size();
+    // Edge case check
+    if (n <= 3)
+    {
+        if (!(points[0] == points[n - 1]))
+            points.push_back(points[0]);
+
+        steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), points});
+        return steps;
+    }
+
+    // Find the leftmost point to be used as the pivot.
+    int point0 = 0;
+    for (int i = 1; i < n; i++)
+    {
+        if (points[i].first < points[point0].first)
+        {
+            point0 = i;
+        }
+    }
+
+    steps.push_back(Step{"Choosing pivot.", points[point0], std::pair(-1, -1), std::vector<std::pair<int, int>>{}});
+
+    std::vector<std::pair<int, int>> output{};
+    int initialPoint = point0;
+    output.push_back(points[initialPoint]);
+
+    int currPoint = -1;
+    while (currPoint != initialPoint)
+    {
+        if (currPoint != -1)
+            output.push_back(points[currPoint]);
+
+        if (currPoint == -1)
+            currPoint = initialPoint;
+
+        int checkPoint = (currPoint + 1) % n;
+        for (int i = 0; i < n; i++)
+        {
+            if (i == checkPoint || i == currPoint)
+                continue;
+
+            if (ccw(points[currPoint], points[i], points[checkPoint]))
+                checkPoint = i;
+
+            steps.push_back(Step{"Checking if counter clockwise turn between " + formatPoint(points[currPoint]) + " and " + formatPoint(points[i]) + ".", points[currPoint], points[i], output});
+        }
+
+        currPoint = checkPoint;
+    }
+    // Since current point is now the initial point, add it to the output.
+    output.push_back(points[initialPoint]);
+
+    steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), output});
+    return steps;
+}
+
+/**
  * Utility function that draws points with radius 3 on the x,y coordinates provided.
  */
 void drawDots(std::vector<std::pair<int, int>> &points, Color color)
@@ -265,7 +332,7 @@ void drawDots(std::vector<std::pair<int, int>> &points, Color color)
 /**
  * Utility function for drawing lines from given steps. Takes into account cases, such as where point is -1, -1 or unavailable.
  */
-void drawLineFromStep(std::vector<Step> &steps, int index, Color color)
+void drawLineFromStep(const std::vector<Step> &steps, int index, Color color)
 {
     int x1 = steps[index].currentPoint.first;
     int y1 = steps[index].currentPoint.second;
@@ -285,7 +352,7 @@ void drawLineFromStep(std::vector<Step> &steps, int index, Color color)
  *
  * Optionally also draws the points that connect the lines.
  */
-void drawLines(std::vector<std::pair<int, int>> &points, Color color, bool drawPoints)
+void drawLines(const std::vector<std::pair<int, int>> &points, Color color, bool drawPoints)
 {
     for (int i = 1; i < points.size(); i++)
     {
@@ -321,7 +388,7 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    auto steps = grahamScanPoints(points);
+    auto steps = getGrahamScanSteps(points);
     int currentStep = 0;
     float lastStep = 0;
     float stepDuration = 0.75f;
@@ -336,6 +403,7 @@ int main(int argc, char *argv[])
 
     // Algorithm dropdown selection
     int algorithm = 0;
+    int currentAlgorithm = 0;
     bool algorithmEditMode = false;
 
     // Menu buttons
@@ -351,6 +419,23 @@ int main(int argc, char *argv[])
 
     while (!WindowShouldClose())
     {
+        if (currentAlgorithm != algorithm)
+        {
+            currentAlgorithm = algorithm;
+            running = false;
+            lastStep = 0.0f;
+            currentStep = 0;
+            switch (currentAlgorithm)
+            {
+            case 0:
+                steps = getGrahamScanSteps(points);
+                break;
+            case 1:
+                steps = getJarvisMarchSteps(points);
+                break;
+            }
+        }
+
         float dt = GetFrameTime();
 
         if (CheckCollisionPointRec(GetMousePosition(), startRectangle))
@@ -413,12 +498,12 @@ int main(int argc, char *argv[])
                 currentStep++;
                 lastStep = 0;
             }
-            drawLineFromStep(steps, currentStep, RED);
             lastStep += dt;
         }
         else
             DrawText("Paused", 10, 500, 18, BLACK);
 
+        drawLineFromStep(steps, currentStep, RED);
         drawLines(steps[currentStep].currentlyAccepted, RED, true);
 
         // Draw GUI
