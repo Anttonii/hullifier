@@ -551,12 +551,21 @@ void drawLines(const std::vector<std::pair<int, int>> &points, Color color, bool
 
 int main(int argc, char *argv[])
 {
-    if (argc != 2)
+    std::string path;
+    if (argc == 1)
+    {
+        std::cout << "Give a path to an input file to start using hullifier." << std::endl;
+        std::cin >> path;
+        std::cout << "Loading data from path: " << path << std::endl;
+    }
+    else
+        path = std::string(argv[1]);
+
+    if (argc > 2)
     {
         std::cout << "Hullifier only acceps a single command line argument being the path of the input." << std::endl;
         return 0;
     }
-    std::string path(argv[1]);
 
     auto points = readFile(path);
     if (points.size() == 0)
