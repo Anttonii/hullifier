@@ -20,8 +20,7 @@
 struct Step
 {
     std::string stepText;
-    std::pair<int, int> currentPoint;
-    std::pair<int, int> nextPoint;
+    std::vector<std::pair<int, int>> participatingPoints;
     std::vector<std::pair<int, int>> currentlyAccepted;
 };
 
@@ -115,9 +114,12 @@ double dot(std::pair<int, int> a, std::pair<int, int> b)
     return a.first * b.first + a.second * b.second;
 }
 
+/**
+ * Calculates the magnitude of a given vector.
+ */
 double magnitude(std::pair<int, int> a)
 {
-    return pow(a.first, 2) + pow(a.second, 2);
+    return sqrt(pow(a.first, 2) + pow(a.second, 2));
 }
 
 /**
@@ -173,6 +175,21 @@ bool compareAngles(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, 
 }
 
 /**
+ * Given 3 distinct points, calculate the height of the triangle formed by drawing lines from each to each other.
+ *
+ * Note that points p and a form the base of the triangle.
+ * Note that the height can be negative, this means that the third point has lower Y than the base.
+ */
+double calculateTriangleHeight(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, int> b)
+{
+    // Use the shoelace theorem to calculate the area
+    // then solve h = 2A/|PQ|
+    double area = 0.5 * (p.first * a.second - p.second * a.first + a.first * b.second - a.second * b.first + p.second * b.first - p.first * b.second);
+    std::pair<int, int> vec = toVector(p, a);
+    return 2 * area / magnitude(vec);
+}
+
+/**
  * Utility function for formatting a point into a string.
  */
 std::string formatPoint(std::pair<int, int> p)
@@ -181,11 +198,13 @@ std::string formatPoint(std::pair<int, int> p)
 }
 
 /**
- * Point comparison structure that allows the passage of the pivot point into the sorting function.
+ * Angle comparison structure that allows the passage of the pivot point into the sorting function.
+ *
+ * Calls the compare angles to sort a set of points in order of their angles to the pivot point.
  */
-struct PointCompare
+struct AngleCompare
 {
-    PointCompare(std::pair<int, int> pivot) { this->pivot = pivot; }
+    AngleCompare(std::pair<int, int> pivot) { this->pivot = pivot; }
     bool operator()(std::pair<int, int> a, std::pair<int, int> b)
     {
         return compareAngles(this->pivot, a, b);
@@ -195,7 +214,27 @@ struct PointCompare
 };
 
 /**
- * Produces a vector of steps that show the procedure of forming the Convex Hull using Grahams Scan.
+ * Side compare determines whether or not a given point is on the right or the left side a line segment.
+ */
+struct SideCompare
+{
+    SideCompare(const std::pair<int, int> &a, const std::pair<int, int> &b)
+    {
+        this->pointA = a;
+        this->pointB = b;
+    }
+
+    bool operator()(const std::pair<int, int> &p)
+    {
+        return calculateTriangleHeight(this->pointA, this->pointB, p) > 0;
+    }
+
+    std::pair<int, int> pointA;
+    std::pair<int, int> pointB;
+};
+
+/**
+ * Produces a vector of steps that show the procedure of forming the Convex Hull using Grahams Scan algorithm.
  *
  * Time complexity for this is n log n.
  */
@@ -209,7 +248,7 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
         if (!(points[0] == points[n - 1]))
             points.push_back(points[0]);
 
-        steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), points});
+        steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, points});
         return steps;
     }
 
@@ -225,21 +264,22 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
     }
 
     std::swap(points[0], points[point0]);
-    std::sort(points.begin() + 1, points.end(), PointCompare(points[0]));
+    std::sort(points.begin() + 1, points.end(), AngleCompare(points[0]));
 
-    steps.push_back(Step{"Choosing pivot.", points[0], std::pair(-1, -1), std::vector<std::pair<int, int>>{}});
+    steps.push_back(Step{"Choosing pivot.", std::vector{points[0], std::pair(-1, -1)}, std::vector<std::pair<int, int>>{}});
 
     // Initially push in the left most and right most angle-wise points w.r.t. point 0.
     std::vector<std::pair<int, int>> output{points[n - 1], points[0]};
-    steps.push_back(Step{"Picking rightmost point angle-wise.", points[0], points[n - 1], output});
+    steps.push_back(Step{"Picking rightmost point angle-wise.", std::vector{points[0], points[n - 1]}, output});
     output.push_back(points[1]);
-    steps.push_back(Step{"Picking leftmost point angle-wise.", points[0], points[1], output});
+    steps.push_back(Step{"Picking leftmost point angle-wise.", std::vector{points[0], points[1]}, output});
 
     int i = 2;
     while (i < n)
     {
         int j = output.size() - 1;
-        steps.push_back(Step{"Checking if counter clockwise turn between " + formatPoint(output[j]) + " and " + formatPoint(points[i]) + ".", output[j], points[i], output});
+        steps.push_back(Step{"Checking if counter clockwise turn between " + formatPoint(output[j]) + " and " + formatPoint(points[i]) + ".",
+                             std::vector{output[j], points[i]}, output});
 
         if (ccw(output[j - 1], output[j], points[i]))
             output.push_back(points[i++]);
@@ -247,12 +287,12 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
             output.pop_back();
     }
 
-    steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), output});
+    steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, output});
     return steps;
 }
 
 /**
- * Produces a vector of steps that show the procedure of forming the Convex Hull using Jarvis March.
+ * Produces a vector of steps that show the procedure of forming the Convex Hull using Jarvis March algorithm.
  *
  * Time complexity for this is n*m.
  */
@@ -266,7 +306,7 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
         if (!(points[0] == points[n - 1]))
             points.push_back(points[0]);
 
-        steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), points});
+        steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, points});
         return steps;
     }
 
@@ -280,7 +320,7 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
         }
     }
 
-    steps.push_back(Step{"Choosing pivot.", points[point0], std::pair(-1, -1), std::vector<std::pair<int, int>>{}});
+    steps.push_back(Step{"Choosing pivot.", std::vector{points[point0], std::pair(-1, -1)}, std::vector<std::pair<int, int>>{}});
 
     std::vector<std::pair<int, int>> output{};
     int initialPoint = point0;
@@ -304,7 +344,9 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
             if (ccw(points[currPoint], points[i], points[checkPoint]))
                 checkPoint = i;
 
-            steps.push_back(Step{"Checking if counter clockwise turn between " + formatPoint(points[currPoint]) + " and " + formatPoint(points[i]) + ".", points[currPoint], points[i], output});
+            steps.push_back(Step{
+                "Checking if counter clockwise turn between " + formatPoint(points[currPoint]) + " and " + formatPoint(points[i]) + ".",
+                std::vector{points[currPoint], points[i]}, output});
         }
 
         currPoint = checkPoint;
@@ -312,7 +354,134 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
     // Since current point is now the initial point, add it to the output.
     output.push_back(points[initialPoint]);
 
-    steps.push_back(Step{"Finished.", std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1), output});
+    steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, output});
+    return steps;
+}
+
+/**
+ * Recursive subroutine of the quickhull algorithm.
+ */
+void recQuickHull(std::pair<int, int> p, std::pair<int, int> q, std::vector<std::pair<int, int>> points, std::vector<Step> &steps, std::vector<std::pair<int, int>> &output)
+{
+    int n = points.size();
+    if (n == 0)
+        return;
+
+    bool right = false;
+    double farthestPoint = 0.0;
+    int farthestPointIndex = -1;
+    for (int i = 0; i < n; i++)
+    {
+        double distance = calculateTriangleHeight(p, q, points[i]);
+        if (fabs(distance) > farthestPoint)
+        {
+            farthestPoint = fabs(distance);
+            farthestPointIndex = i;
+
+            if (distance < 0)
+                right = true;
+        }
+    }
+
+    // Swap places to allow for partitioning.
+    std::swap(points[0], points[farthestPointIndex]);
+    steps.push_back(Step{"Find the most distant point from line segment.", std::vector{p, q, points[0], p}, output});
+
+    // Insert into output.
+    if (!right)
+    {
+        auto outputIndex = std::find(output.begin(), output.end(), p);
+        if (outputIndex != output.end())
+        {
+            outputIndex++;
+            output.insert(outputIndex, points[0]);
+        }
+    }
+    else
+    {
+        auto outputIndex = std::find(output.begin(), output.end(), q);
+        if (outputIndex != output.end())
+        {
+            outputIndex++;
+            output.insert(outputIndex, points[0]);
+        }
+    }
+
+    steps.push_back(Step{"Accept the point and continue recursively from the new line segments.", std::vector<std::pair<int, int>>{}, output});
+    auto p1 = std::partition(points.begin() + 1, points.end(), SideCompare(p, points[0]));
+    std::vector<std::pair<int, int>> v1points;
+    if (!right)
+        v1points = std::vector(points.begin() + 1, p1);
+    else
+        v1points = std::vector(p1, points.end());
+
+    auto p2 = std::partition(points.begin() + 1, points.end(), SideCompare(q, points[0]));
+    std::vector<std::pair<int, int>> v2points;
+    if (!right)
+        v2points = std::vector(p2, points.end());
+    else
+        v2points = std::vector(points.begin() + 1, p2);
+
+    recQuickHull(p, points[0], v1points, steps, output);
+    if (right)
+        recQuickHull(q, points[0], v2points, steps, output);
+    else
+        recQuickHull(points[0], q, v2points, steps, output);
+}
+
+/**
+ * Produces a vector of steps that show the procedure of forming the Convex Hull using Quickhull algorithm.
+ *
+ * Time complexity for this is n log n.
+ */
+std::vector<Step> getQuickHullSteps(std::vector<std::pair<int, int>> points)
+{
+    std::vector<Step> steps;
+    int n = points.size();
+
+    // Find the leftmost and rightmost points to be used as the pivots.
+    int point0 = 0;
+    int pointn = 0;
+
+    for (int i = 1; i < n; i++)
+    {
+        // Leftmost point
+        if (points[i].first <= points[point0].first)
+        {
+            // In case of a tie, make sure the point that is Y-wise lower gets chosen.
+            // Since the top edge has Y value of 0, we want the point with higher Y value.
+            if (points[i].first == points[point0].first && points[i].second < points[point0].second)
+                continue;
+
+            point0 = i;
+        }
+
+        // Rightmost point
+        if (points[i].first >= points[pointn].first)
+        {
+            // Same as before but here we choose the point that has the lower Y and is thus the point that is higher.
+            if (points[i].first == points[point0].first && points[i].second > points[point0].second)
+                continue;
+
+            pointn = i;
+        }
+    }
+
+    // Swap the point 0 and point n to be the first two points.
+    std::swap(points[0], points[point0]);
+    std::swap(points[1], points[pointn]);
+
+    // Partition the set of points into two subsets based on which side of the line segment the points are.
+    auto partition = std::partition(points.begin() + 2, points.end(), SideCompare(points[0], points[1]));
+
+    std::vector<std::pair<int, int>> output{points[0], points[1], points[0]};
+    steps.push_back(Step{"Choosing pivots as leftmost and rightmost points.", std::vector{points[0], points[1]}, output});
+
+    recQuickHull(points[0], points[1], std::vector(points.begin() + 2, partition), steps, output);
+    recQuickHull(points[0], points[1], std::vector(partition, points.end()), steps, output);
+
+    steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, output});
+
     return steps;
 }
 
@@ -332,19 +501,27 @@ void drawDots(std::vector<std::pair<int, int>> &points, Color color)
 /**
  * Utility function for drawing lines from given steps. Takes into account cases, such as where point is -1, -1 or unavailable.
  */
-void drawLineFromStep(const std::vector<Step> &steps, int index, Color color)
+void drawLinesFromStep(const std::vector<Step> &steps, int index, Color color)
 {
-    int x1 = steps[index].currentPoint.first;
-    int y1 = steps[index].currentPoint.second;
-    int x2 = steps[index].nextPoint.first;
-    int y2 = steps[index].nextPoint.second;
+    int length = steps[index].participatingPoints.size();
 
-    if (steps[index].currentPoint != std::pair(-1, -1))
-        DrawCircle(x1, y1, 3, color);
-    if (steps[index].nextPoint != std::pair(-1, -1))
-        DrawCircle(x2, y2, 3, color);
-    if (steps[index].currentPoint != std::pair(-1, -1) && steps[index].nextPoint != std::pair(-1, -1))
-        DrawLine(x1, y1, x2, y2, color);
+    for (int i = 1; i < length; i++)
+    {
+        auto currentPoint = steps[index].participatingPoints[i - 1];
+        auto nextPoint = steps[index].participatingPoints[i];
+
+        int x1 = currentPoint.first;
+        int y1 = currentPoint.second;
+        int x2 = nextPoint.first;
+        int y2 = nextPoint.second;
+
+        if (currentPoint != std::pair(-1, -1))
+            DrawCircle(x1, y1, 3, color);
+        if (nextPoint != std::pair(-1, -1))
+            DrawCircle(x2, y2, 3, color);
+        if (currentPoint != std::pair(-1, -1) && nextPoint != std::pair(-1, -1))
+            DrawLine(x1, y1, x2, y2, color);
+    }
 }
 
 /**
@@ -433,6 +610,9 @@ int main(int argc, char *argv[])
             case 1:
                 steps = getJarvisMarchSteps(points);
                 break;
+            case 2:
+                steps = getQuickHullSteps(points);
+                break;
             }
         }
 
@@ -496,6 +676,22 @@ int main(int argc, char *argv[])
             keysPressed.insert(KEY_RIGHT);
         }
 
+        if (IsKeyDown(KEY_F) && !keysPressed.count(KEY_F))
+        {
+            lastStep = 0.0f;
+            currentStep = (int)steps.size() - 1;
+            running = false;
+            keysPressed.insert(KEY_F);
+        }
+
+        if (IsKeyDown(KEY_R) && !keysPressed.count(KEY_R))
+        {
+            lastStep = 0.0f;
+            currentStep = 0;
+            running = false;
+            keysPressed.insert(KEY_R);
+        }
+
         for (auto const &key : keysPressed)
         {
             if (IsKeyUp(key) && keysPressed.count(key))
@@ -517,9 +713,12 @@ int main(int argc, char *argv[])
             lastStep += dt;
         }
         else
-            DrawText("Paused", 10, 500, 18, BLACK);
+        {
+            std::string text = currentStep == (int)steps.size() - 1 ? "Finished." : "Paused.";
+            DrawText(text.c_str(), 10, 500, 18, BLACK);
+        }
 
-        drawLineFromStep(steps, currentStep, RED);
+        drawLinesFromStep(steps, currentStep, RED);
         drawLines(steps[currentStep].currentlyAccepted, RED, true);
 
         // Draw GUI
@@ -538,11 +737,12 @@ int main(int argc, char *argv[])
         DrawRectangleRoundedLinesEx(guiBorder, 0.1f, 0, 1.0f, BLACK);
         DrawText("RESET", resetRectangle.x + 60, resetRectangle.y + 8, 18, BLACK);
 
-        DrawText("STEP DURATION:", 510, 155, 20, BLACK);
-        GuiSliderBar(Rectangle{555, 180, 105, 20}, "Seconds:", TextFormat("%.2f", stepDuration), &stepDuration, 0.0f, 3.0f);
+        DrawText("STEP DURATION:", 505, 155, 20, BLACK);
+        if (!algorithmEditMode)
+            GuiSliderBar(Rectangle{555, 180, 105, 20}, "Seconds:", TextFormat("%.2f", stepDuration), &stepDuration, 0.0f, 3.0f);
 
         DrawText("ALGORITHM:", 535, 95, 20, BLACK);
-        if (GuiDropdownBox(Rectangle{505, 120, 180, 20}, "GRAHAM'S SCAN;JARVIS MATCH", &algorithm, algorithmEditMode))
+        if (GuiDropdownBox(Rectangle{505, 120, 180, 20}, "GRAHAM'S SCAN;JARVIS MATCH;QUICK HULL", &algorithm, algorithmEditMode))
             algorithmEditMode = !algorithmEditMode;
 
         EndDrawing();

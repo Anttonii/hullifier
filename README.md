@@ -37,6 +37,24 @@ The data folder contains an exemplary input file that can be used to test the fu
 $ ./hullifier data/input.txt
 ```
 
+### Implemented algorithms:
+
+Currently `hullifier` visualizes the following algorithms:
+
+ - Graham Scan
+ - Jarvis March
+ - Quickhull
+
+### Keyboard Shortcuts
+
+Once you have a `hullifier` running, you can give `hullifier` instructions with the keyboard as follow:
+
+ - `space`: starts the algorithms running sequence.
+ - `left arrow`: goes backwards one step within the algorithms run sequence.
+ - `right arrow`: goes forwards one step within the algorithms run sequence.
+ - `f`: jumps to the finished state.
+ - `r`: restarts the algorithms run sequence.
+
 ## License
 
 This repository is licensed under the MIT license.
