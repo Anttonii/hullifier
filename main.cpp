@@ -481,9 +481,25 @@ int main(int argc, char *argv[])
             lastStep = 0.0f;
             keysPressed.insert(KEY_SPACE);
         }
-        if (IsKeyUp(KEY_SPACE) && keysPressed.count(KEY_SPACE))
+
+        if (IsKeyDown(KEY_LEFT) && !keysPressed.count(KEY_LEFT))
         {
-            keysPressed.erase(KEY_SPACE);
+            lastStep = 0.0f;
+            currentStep = std::max(0, currentStep - 1);
+            keysPressed.insert(KEY_LEFT);
+        }
+
+        if (IsKeyDown(KEY_RIGHT) && !keysPressed.count(KEY_RIGHT))
+        {
+            lastStep = 0.0f;
+            currentStep = std::min((int)steps.size() - 1, currentStep + 1);
+            keysPressed.insert(KEY_RIGHT);
+        }
+
+        for (auto const &key : keysPressed)
+        {
+            if (IsKeyUp(key) && keysPressed.count(key))
+                keysPressed.erase(key);
         }
 
         BeginDrawing();
