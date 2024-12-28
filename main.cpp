@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <set>
+#include <variant>
 
 #include "raylib.h"
 
@@ -15,13 +16,78 @@
 #include "raygui.h"
 
 /**
- * Represents a single step in the algorithm.
+ * Represents a point in two-dimensional space.
  */
-struct Step
+struct Point2D
+{
+    int x;
+    int y;
+
+    Point2D() : x(0), y(0)
+    {
+    }
+
+    Point2D(int x, int y) : x(x), y(y)
+    {
+    }
+
+    bool operator==(const Point2D &p2)
+    {
+        return this->x == p2.x && this->y == p2.y;
+    }
+
+    bool operator!=(const Point2D &p2)
+    {
+        return this->x != p2.x || this->y != p2.y;
+    }
+};
+
+/**
+ * Represents a point in three-dimensional space.
+ */
+struct Point3D
+{
+    int x;
+    int y;
+    int z;
+
+    Point3D() : x(0), y(0), z(0)
+    {
+    }
+
+    Point3D(int x, int y, int z) : x(x), y(y), z(z)
+    {
+    }
+
+    bool operator==(const Point3D &p2)
+    {
+        return this->x == p2.x && this->y == p2.y && this->z == p2.z;
+    }
+
+    bool operator!=(const Point3D &p2)
+    {
+        return this->x != p2.x || this->y != p2.y || this->z != p2.z;
+    }
+};
+
+/**
+ * Represents a single step in the algorithm when operating in 2-dimensional space.
+ */
+struct Step2D
 {
     std::string stepText;
-    std::vector<std::pair<int, int>> participatingPoints;
-    std::vector<std::pair<int, int>> currentlyAccepted;
+    std::vector<Point2D> participatingPoints;
+    std::vector<Point2D> currentlyAccepted;
+};
+
+/**
+ * Represents a single step in the algorithm when operating in 2-dimensional space.
+ */
+struct Step3D
+{
+    std::string stepText;
+    std::vector<Point3D> participatingPoints;
+    std::vector<Point3D> currentlyAccepted;
 };
 
 /**
@@ -47,20 +113,23 @@ std::vector<std::string> splitString(std::string &str, char del)
     return output;
 }
 
+/* Variant for the return type of reading a file, since a file can contain either 2D points or 3D points. */
+using PointData = std::variant<std::vector<Point2D>, std::vector<Point3D>>;
+
 /**
  * Reads a file from given path and returns all points.
  *
  * A point is a line that has two values separated by a comma.
  */
-std::vector<std::pair<int, int>> readFile(std::string &path)
+PointData readFile(std::string &path)
 {
-    std::vector<std::pair<int, int>> points;
+    bool is3D = false;
+    std::vector<Point2D> points2D;
+    std::vector<Point3D> points3D;
+
     std::ifstream fstream(path);
     if (!fstream.is_open())
-    {
-        std::cerr << "Failed to open file." << std::endl;
-        return points;
-    }
+        throw std::runtime_error("Failed to open file.");
 
     std::string line;
     int lineNumber = 0;
@@ -69,7 +138,7 @@ std::vector<std::pair<int, int>> readFile(std::string &path)
         lineNumber++;
 
         std::vector<std::string> splitted = splitString(line, ',');
-        if (splitted.size() != 2)
+        if (splitted.size() < 2 || splitted.size() > 3)
         {
             std::cerr << "Failed to read entry on line: " << lineNumber << std::endl;
             continue;
@@ -81,11 +150,20 @@ std::vector<std::pair<int, int>> readFile(std::string &path)
             int x = std::stoi(splitted[0]);
             int y = std::stoi(splitted[1]);
 
-            if (x > 500 || x < 0 || y > 500 || y < 0)
-                std::cout << "Invalid point in input, x and y values must be in ranged [0,500]." << std::endl;
-
-            std::pair<int, int> point{x, y};
-            points.push_back(point);
+            if (splitted.size() == 2) // 2D point
+            {
+                if (x > 500 || x < 0 || y > 500 || y < 0)
+                    std::cout << "Invalid point in input, x and y values must be in range [0,500]." << std::endl;
+                points2D.push_back(Point2D{x, y});
+            }
+            else if (splitted.size() == 3) // 3D point
+            {
+                int z = std::stoi(splitted[2]);
+                if (x > 500 || x < 0 || y > 500 || y < 0 || z > 500 || z < 0)
+                    std::cout << "Invalid point in input, x, y, z values must be in range [0,500]." << std::endl;
+                points3D.push_back(Point3D{x, y, z});
+                is3D = true; // We have detected 3D points
+            }
         }
         catch (const std::exception &e)
         {
@@ -93,49 +171,62 @@ std::vector<std::pair<int, int>> readFile(std::string &path)
         }
     }
 
-    std::cout << "Loaded " << points.size() << " points." << std::endl;
+    if (is3D)
+    {
+        if (points3D.size() == 0)
+            throw std::runtime_error("Failed to read input, 0 points loaded, exiting..");
 
-    return points;
+        std::cout << "Loaded " << points3D.size() << " points." << std::endl;
+        return points3D;
+    }
+    else
+    {
+        if (points2D.size() == 0)
+            throw std::runtime_error("Failed to read input, 0 points loaded, exiting..");
+
+        std::cout << "Loaded " << points2D.size() << " points." << std::endl;
+        return points2D;
+    }
 }
 
 /**
  * Get the vector between two points.
  */
-std::pair<int, int> toVector(std::pair<int, int> a, std::pair<int, int> b)
+Point2D toVector(Point2D a, Point2D b)
 {
-    return std::pair(b.first - a.first, b.second - a.second);
+    return Point2D(b.x - a.x, b.y - a.y);
 }
 
 /**
  * Dot product of two vectors
  */
-double dot(std::pair<int, int> a, std::pair<int, int> b)
+double dot(Point2D a, Point2D b)
 {
-    return a.first * b.first + a.second * b.second;
+    return a.x * b.x + a.y * b.y;
 }
 
 /**
  * Calculates the magnitude of a given vector.
  */
-double magnitude(std::pair<int, int> a)
+double magnitude(Point2D a)
 {
-    return sqrt(pow(a.first, 2) + pow(a.second, 2));
+    return sqrt(pow(a.x, 2) + pow(a.y, 2));
 }
 
 /**
  * Cross product of two vectors.
  */
-double cross(std::pair<int, int> a, std::pair<int, int> b)
+double cross(Point2D a, Point2D b)
 {
-    return a.first * b.second - a.second * b.first;
+    return a.x * b.y - a.y * b.x;
 }
 
 /**
  * Euclidean distance function.
  */
-double distance(std::pair<int, int> a, std::pair<int, int> b)
+double distance(Point2D a, Point2D b)
 {
-    return sqrt(pow(a.first - b.first, 2) + pow(a.second - b.second, 2));
+    return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
 }
 
 /**
@@ -143,7 +234,7 @@ double distance(std::pair<int, int> a, std::pair<int, int> b)
  *
  * Using 10^-12 as a measurement because of floating pointer inaccuracies.
  */
-bool pointsCollinear(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, int> b)
+bool pointsCollinear(Point2D p, Point2D a, Point2D b)
 {
     return fabs(cross(toVector(p, a), toVector(p, b))) < powf(10, -12);
 }
@@ -151,7 +242,7 @@ bool pointsCollinear(std::pair<int, int> p, std::pair<int, int> a, std::pair<int
 /**
  * Checks whether a turn is counter clockwise or not.
  */
-bool ccw(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, int> b)
+bool ccw(Point2D p, Point2D a, Point2D b)
 {
     return cross(toVector(p, a), toVector(p, b)) > 0;
 }
@@ -161,7 +252,7 @@ bool ccw(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, int> b)
  *
  * Given a pivot point p and points a and b, find the next counter clockwise turn.
  */
-bool compareAngles(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, int> b)
+bool compareAngles(Point2D p, Point2D a, Point2D b)
 {
     // Special case where points are collinear, choose the closer point.
     if (pointsCollinear(p, a, b))
@@ -169,9 +260,9 @@ bool compareAngles(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, 
         return distance(p, a) < distance(p, b);
     }
 
-    std::pair<int, int> pivotA = toVector(p, a);
-    std::pair<int, int> pivotB = toVector(p, b);
-    return (atan2(pivotA.second, pivotA.first) - atan2(pivotB.second, pivotB.first)) < 0;
+    Point2D pivotA = toVector(p, a);
+    Point2D pivotB = toVector(p, b);
+    return (atan2(pivotA.y, pivotA.x) - atan2(pivotB.y, pivotB.x)) < 0;
 }
 
 /**
@@ -180,21 +271,21 @@ bool compareAngles(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, 
  * Note that points p and a form the base of the triangle.
  * Note that the height can be negative, this means that the third point has lower Y than the base.
  */
-double calculateTriangleHeight(std::pair<int, int> p, std::pair<int, int> a, std::pair<int, int> b)
+double calculateTriangleHeight(Point2D p, Point2D a, Point2D b)
 {
     // Use the shoelace theorem to calculate the area
     // then solve h = 2A/|PQ|
-    double area = 0.5 * (p.first * a.second - p.second * a.first + a.first * b.second - a.second * b.first + p.second * b.first - p.first * b.second);
-    std::pair<int, int> vec = toVector(p, a);
+    double area = 0.5 * (p.x * a.y - p.y * a.x + a.x * b.y - a.y * b.x + p.y * b.x - p.x * b.y);
+    Point2D vec = toVector(p, a);
     return 2 * area / magnitude(vec);
 }
 
 /**
  * Utility function for formatting a point into a string.
  */
-std::string formatPoint(std::pair<int, int> p)
+std::string formatPoint(Point2D p)
 {
-    return "(" + std::to_string(p.first) + "," + std::to_string(p.second) + ")";
+    return "(" + std::to_string(p.x) + "," + std::to_string(p.y) + ")";
 }
 
 /**
@@ -204,13 +295,13 @@ std::string formatPoint(std::pair<int, int> p)
  */
 struct AngleCompare
 {
-    AngleCompare(std::pair<int, int> pivot) { this->pivot = pivot; }
-    bool operator()(std::pair<int, int> a, std::pair<int, int> b)
+    AngleCompare(Point2D pivot) { this->pivot = pivot; }
+    bool operator()(Point2D a, Point2D b)
     {
         return compareAngles(this->pivot, a, b);
     }
 
-    std::pair<int, int> pivot;
+    Point2D pivot;
 };
 
 /**
@@ -218,19 +309,19 @@ struct AngleCompare
  */
 struct SideCompare
 {
-    SideCompare(const std::pair<int, int> &a, const std::pair<int, int> &b)
+    SideCompare(const Point2D &a, const Point2D &b)
     {
         this->pointA = a;
         this->pointB = b;
     }
 
-    bool operator()(const std::pair<int, int> &p)
+    bool operator()(const Point2D &p)
     {
         return calculateTriangleHeight(this->pointA, this->pointB, p) > 0;
     }
 
-    std::pair<int, int> pointA;
-    std::pair<int, int> pointB;
+    Point2D pointA;
+    Point2D pointB;
 };
 
 /**
@@ -238,9 +329,9 @@ struct SideCompare
  *
  * Time complexity for this is n log n.
  */
-std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
+std::vector<Step2D> getGrahamScanSteps(std::vector<Point2D> &points)
 {
-    std::vector<Step> steps;
+    std::vector<Step2D> steps;
     int n = points.size();
     // Edge case check
     if (n <= 3)
@@ -248,7 +339,7 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
         if (!(points[0] == points[n - 1]))
             points.push_back(points[0]);
 
-        steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, points});
+        steps.push_back(Step2D{"Finished.", std::vector{Point2D(-1, -1), Point2D(-1, -1)}, points});
         return steps;
     }
 
@@ -257,7 +348,7 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
     int point0 = 0;
     for (int i = 1; i < n; i++)
     {
-        if (points[i].second > points[point0].second || (points[i].second == points[point0].second && points[i].first > points[point0].first))
+        if (points[i].y > points[point0].y || (points[i].y == points[point0].y && points[i].x > points[point0].x))
         {
             point0 = i;
         }
@@ -266,20 +357,20 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
     std::swap(points[0], points[point0]);
     std::sort(points.begin() + 1, points.end(), AngleCompare(points[0]));
 
-    steps.push_back(Step{"Choosing pivot.", std::vector{points[0], std::pair(-1, -1)}, std::vector<std::pair<int, int>>{}});
+    steps.push_back(Step2D{"Choosing pivot.", std::vector{points[0], Point2D(-1, -1)}, std::vector<Point2D>{}});
 
     // Initially push in the left most and right most angle-wise points w.r.t. point 0.
-    std::vector<std::pair<int, int>> output{points[n - 1], points[0]};
-    steps.push_back(Step{"Picking rightmost point angle-wise.", std::vector{points[0], points[n - 1]}, output});
+    std::vector<Point2D> output{points[n - 1], points[0]};
+    steps.push_back(Step2D{"Picking rightmost point angle-wise.", std::vector{points[0], points[n - 1]}, output});
     output.push_back(points[1]);
-    steps.push_back(Step{"Picking leftmost point angle-wise.", std::vector{points[0], points[1]}, output});
+    steps.push_back(Step2D{"Picking leftmost point angle-wise.", std::vector{points[0], points[1]}, output});
 
     int i = 2;
     while (i < n)
     {
         int j = output.size() - 1;
-        steps.push_back(Step{"Checking if counter clockwise turn between " + formatPoint(output[j]) + " and " + formatPoint(points[i]) + ".",
-                             std::vector{output[j], points[i]}, output});
+        steps.push_back(Step2D{"Checking if counter clockwise turn between " + formatPoint(output[j]) + " and " + formatPoint(points[i]) + ".",
+                               std::vector{output[j], points[i]}, output});
 
         if (ccw(output[j - 1], output[j], points[i]))
             output.push_back(points[i++]);
@@ -287,7 +378,7 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
             output.pop_back();
     }
 
-    steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, output});
+    steps.push_back(Step2D{"Finished.", std::vector{Point2D(-1, -1), Point2D(-1, -1)}, output});
     return steps;
 }
 
@@ -296,9 +387,9 @@ std::vector<Step> getGrahamScanSteps(std::vector<std::pair<int, int>> &points)
  *
  * Time complexity for this is n*m.
  */
-std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
+std::vector<Step2D> getJarvisMarchSteps(std::vector<Point2D> &points)
 {
-    std::vector<Step> steps;
+    std::vector<Step2D> steps;
     int n = points.size();
     // Edge case check
     if (n <= 3)
@@ -306,7 +397,7 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
         if (!(points[0] == points[n - 1]))
             points.push_back(points[0]);
 
-        steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, points});
+        steps.push_back(Step2D{"Finished.", std::vector{Point2D(-1, -1), Point2D(-1, -1)}, points});
         return steps;
     }
 
@@ -314,15 +405,15 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
     int point0 = 0;
     for (int i = 1; i < n; i++)
     {
-        if (points[i].first < points[point0].first)
+        if (points[i].x < points[point0].x)
         {
             point0 = i;
         }
     }
 
-    steps.push_back(Step{"Choosing pivot.", std::vector{points[point0], std::pair(-1, -1)}, std::vector<std::pair<int, int>>{}});
+    steps.push_back(Step2D{"Choosing pivot.", std::vector{points[point0], Point2D(-1, -1)}, std::vector<Point2D>{}});
 
-    std::vector<std::pair<int, int>> output{};
+    std::vector<Point2D> output{};
     int initialPoint = point0;
     output.push_back(points[initialPoint]);
 
@@ -344,7 +435,7 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
             if (ccw(points[currPoint], points[i], points[checkPoint]))
                 checkPoint = i;
 
-            steps.push_back(Step{
+            steps.push_back(Step2D{
                 "Checking if counter clockwise turn between " + formatPoint(points[currPoint]) + " and " + formatPoint(points[i]) + ".",
                 std::vector{points[currPoint], points[i]}, output});
         }
@@ -354,14 +445,14 @@ std::vector<Step> getJarvisMarchSteps(std::vector<std::pair<int, int>> &points)
     // Since current point is now the initial point, add it to the output.
     output.push_back(points[initialPoint]);
 
-    steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, output});
+    steps.push_back(Step2D{"Finished.", std::vector{Point2D(-1, -1), Point2D(-1, -1)}, output});
     return steps;
 }
 
 /**
  * Recursive subroutine of the quickhull algorithm.
  */
-void recQuickHull(std::pair<int, int> p, std::pair<int, int> q, std::vector<std::pair<int, int>> points, std::vector<Step> &steps, std::vector<std::pair<int, int>> &output)
+void recQuickHull(Point2D p, Point2D q, std::vector<Point2D> points, std::vector<Step2D> &steps, std::vector<Point2D> &output)
 {
     int n = points.size();
     if (n == 0)
@@ -385,7 +476,7 @@ void recQuickHull(std::pair<int, int> p, std::pair<int, int> q, std::vector<std:
 
     // Swap places to allow for partitioning.
     std::swap(points[0], points[farthestPointIndex]);
-    steps.push_back(Step{"Find the most distant point from line segment.", std::vector{p, q, points[0], p}, output});
+    steps.push_back(Step2D{"Find the most distant point from line segment.", std::vector{p, q, points[0], p}, output});
 
     // Insert into output.
     if (!right)
@@ -407,16 +498,16 @@ void recQuickHull(std::pair<int, int> p, std::pair<int, int> q, std::vector<std:
         }
     }
 
-    steps.push_back(Step{"Accept the point and continue recursively from the new line segments.", std::vector<std::pair<int, int>>{}, output});
+    steps.push_back(Step2D{"Accept the point and continue recursively from the new line segments.", std::vector<Point2D>{}, output});
     auto p1 = std::partition(points.begin() + 1, points.end(), SideCompare(p, points[0]));
-    std::vector<std::pair<int, int>> v1points;
+    std::vector<Point2D> v1points;
     if (!right)
         v1points = std::vector(points.begin() + 1, p1);
     else
         v1points = std::vector(p1, points.end());
 
     auto p2 = std::partition(points.begin() + 1, points.end(), SideCompare(q, points[0]));
-    std::vector<std::pair<int, int>> v2points;
+    std::vector<Point2D> v2points;
     if (!right)
         v2points = std::vector(p2, points.end());
     else
@@ -434,9 +525,9 @@ void recQuickHull(std::pair<int, int> p, std::pair<int, int> q, std::vector<std:
  *
  * Time complexity for this is n log n.
  */
-std::vector<Step> getQuickHullSteps(std::vector<std::pair<int, int>> points)
+std::vector<Step2D> getQuickHullSteps(std::vector<Point2D> points)
 {
-    std::vector<Step> steps;
+    std::vector<Step2D> steps;
     int n = points.size();
 
     // Find the leftmost and rightmost points to be used as the pivots.
@@ -446,21 +537,21 @@ std::vector<Step> getQuickHullSteps(std::vector<std::pair<int, int>> points)
     for (int i = 1; i < n; i++)
     {
         // Leftmost point
-        if (points[i].first <= points[point0].first)
+        if (points[i].x <= points[point0].x)
         {
             // In case of a tie, make sure the point that is Y-wise lower gets chosen.
             // Since the top edge has Y value of 0, we want the point with higher Y value.
-            if (points[i].first == points[point0].first && points[i].second < points[point0].second)
+            if (points[i].x == points[point0].x && points[i].y < points[point0].y)
                 continue;
 
             point0 = i;
         }
 
         // Rightmost point
-        if (points[i].first >= points[pointn].first)
+        if (points[i].x >= points[pointn].x)
         {
             // Same as before but here we choose the point that has the lower Y and is thus the point that is higher.
-            if (points[i].first == points[point0].first && points[i].second > points[point0].second)
+            if (points[i].x == points[point0].x && points[i].y > points[point0].y)
                 continue;
 
             pointn = i;
@@ -474,13 +565,13 @@ std::vector<Step> getQuickHullSteps(std::vector<std::pair<int, int>> points)
     // Partition the set of points into two subsets based on which side of the line segment the points are.
     auto partition = std::partition(points.begin() + 2, points.end(), SideCompare(points[0], points[1]));
 
-    std::vector<std::pair<int, int>> output{points[0], points[1], points[0]};
-    steps.push_back(Step{"Choosing pivots as leftmost and rightmost points.", std::vector{points[0], points[1]}, output});
+    std::vector<Point2D> output{points[0], points[1], points[0]};
+    steps.push_back(Step2D{"Choosing pivots as leftmost and rightmost points.", std::vector{points[0], points[1]}, output});
 
     recQuickHull(points[0], points[1], std::vector(points.begin() + 2, partition), steps, output);
     recQuickHull(points[0], points[1], std::vector(partition, points.end()), steps, output);
 
-    steps.push_back(Step{"Finished.", std::vector{std::pair<int, int>(-1, -1), std::pair<int, int>(-1, -1)}, output});
+    steps.push_back(Step2D{"Finished.", std::vector{Point2D(-1, -1), Point2D(-1, -1)}, output});
 
     return steps;
 }
@@ -488,12 +579,12 @@ std::vector<Step> getQuickHullSteps(std::vector<std::pair<int, int>> points)
 /**
  * Utility function that draws points with radius 3 on the x,y coordinates provided.
  */
-void drawDots(std::vector<std::pair<int, int>> &points, Color color)
+void drawDots(std::vector<Point2D> &points, Color color)
 {
     for (auto const &p : points)
     {
-        int x = p.first;
-        int y = p.second;
+        int x = p.x;
+        int y = p.y;
         DrawCircle(x, y, 3, color);
     }
 }
@@ -501,7 +592,7 @@ void drawDots(std::vector<std::pair<int, int>> &points, Color color)
 /**
  * Utility function for drawing lines from given steps. Takes into account cases, such as where point is -1, -1 or unavailable.
  */
-void drawLinesFromStep(const std::vector<Step> &steps, int index, Color color)
+void drawLinesFromStep(const std::vector<Step2D> &steps, int index, Color color)
 {
     int length = steps[index].participatingPoints.size();
 
@@ -510,16 +601,16 @@ void drawLinesFromStep(const std::vector<Step> &steps, int index, Color color)
         auto currentPoint = steps[index].participatingPoints[i - 1];
         auto nextPoint = steps[index].participatingPoints[i];
 
-        int x1 = currentPoint.first;
-        int y1 = currentPoint.second;
-        int x2 = nextPoint.first;
-        int y2 = nextPoint.second;
+        int x1 = currentPoint.x;
+        int y1 = currentPoint.y;
+        int x2 = nextPoint.x;
+        int y2 = nextPoint.y;
 
-        if (currentPoint != std::pair(-1, -1))
+        if (currentPoint != Point2D(-1, -1))
             DrawCircle(x1, y1, 3, color);
-        if (nextPoint != std::pair(-1, -1))
+        if (nextPoint != Point2D(-1, -1))
             DrawCircle(x2, y2, 3, color);
-        if (currentPoint != std::pair(-1, -1) && nextPoint != std::pair(-1, -1))
+        if (currentPoint != Point2D(-1, -1) && nextPoint != Point2D(-1, -1))
             DrawLine(x1, y1, x2, y2, color);
     }
 }
@@ -529,17 +620,17 @@ void drawLinesFromStep(const std::vector<Step> &steps, int index, Color color)
  *
  * Optionally also draws the points that connect the lines.
  */
-void drawLines(const std::vector<std::pair<int, int>> &points, Color color, bool drawPoints)
+void drawLines(const std::vector<Point2D> &points, Color color, bool drawPoints)
 {
     for (int i = 1; i < points.size(); i++)
     {
-        std::pair<int, int> p = points[i - 1];
-        std::pair<int, int> p2 = points[i];
+        Point2D p = points[i - 1];
+        Point2D p2 = points[i];
 
-        int x1 = p.first;
-        int y1 = p.second;
-        int x2 = p2.first;
-        int y2 = p2.second;
+        int x1 = p.x;
+        int y1 = p.y;
+        int x2 = p2.x;
+        int y2 = p2.y;
         if (drawPoints)
         {
             DrawCircle(x1, y1, 3, color);
@@ -549,41 +640,17 @@ void drawLines(const std::vector<std::pair<int, int>> &points, Color color, bool
     }
 }
 
-int main(int argc, char *argv[])
+/**
+ * The main rendering function when operating in 2-dimensions.
+ */
+void render2D(std::vector<Point2D> &points)
 {
-    std::string path;
-    if (argc == 1)
-    {
-        std::cout << "Give a path to an input file to start using hullifier." << std::endl;
-        std::cin >> path;
-        std::cout << "Loading data from path: " << path << std::endl;
-    }
-    else
-        path = std::string(argv[1]);
-
-    if (argc > 2)
-    {
-        std::cout << "Hullifier only acceps a single command line argument being the path of the input." << std::endl;
-        return 0;
-    }
-
-    auto points = readFile(path);
-    if (points.size() == 0)
-    {
-        std::cout << "Failed to read input, 0 points loaded, exiting.." << std::endl;
-        return 0;
-    }
-
+    bool running = false;
     auto steps = getGrahamScanSteps(points);
     int currentStep = 0;
     float lastStep = 0;
     float stepDuration = 0.75f;
-    std::vector<std::pair<std::pair<int, int>, std::pair<int, int>>> lines;
-
-    int width = 700;
-    int height = 520;
-    InitWindow(width, height, "Hullifier");
-    bool running = false;
+    std::vector<std::pair<Point2D, Point2D>> lines;
 
     Rectangle guiBorder = Rectangle{500, 5, 195, 490};
 
@@ -755,6 +822,55 @@ int main(int argc, char *argv[])
             algorithmEditMode = !algorithmEditMode;
 
         EndDrawing();
+    }
+}
+
+/**
+ * The main rendering function when operating in 3-dimensions.
+ */
+void render3D(std::vector<Point3D> &points)
+{
+    while (!WindowShouldClose())
+    {
+        BeginDrawing();
+        ClearBackground(WHITE);
+        EndDrawing();
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    std::string path;
+    if (argc == 1)
+    {
+        std::cout << "Give a path to an input file to start using hullifier." << std::endl;
+        std::cin >> path;
+        std::cout << "Loading data from path: " << path << std::endl;
+    }
+    else
+        path = std::string(argv[1]);
+
+    if (argc > 2)
+    {
+        std::cout << "Hullifier only acceps a single command line argument being the path of the input." << std::endl;
+        return 0;
+    }
+
+    auto points = readFile(path);
+
+    int width = 700;
+    int height = 520;
+    InitWindow(width, height, "Hullifier");
+
+    if (std::holds_alternative<std::vector<Point2D>>(points))
+    {
+        auto points2D = std::get<std::vector<Point2D>>(points);
+        render2D(points2D);
+    }
+    else if (std::holds_alternative<std::vector<Point3D>>(points))
+    {
+        auto points3D = std::get<std::vector<Point3D>>(points);
+        render3D(points3D);
     }
 
     CloseWindow();
