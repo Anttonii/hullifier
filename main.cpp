@@ -867,6 +867,17 @@ Vector3 applyRotation(Vector3 vec, float rotx, float roty)
 }
 
 /**
+ * Apply zoom to the the camera when in 3-dimensional space.
+ */
+Vector3 applyZoom(Vector3 vec, float zoom)
+{
+    Vector3 min{-1.5f, -1.5f, -3.0f};
+    Vector3 max{1.5f, 1.5f, 3.0f};
+
+    return Vector3Clamp(Vector3Scale(vec, zoom), min, max);
+}
+
+/**
  * The main rendering function when operating in 3-dimensions.
  */
 void render3D(std::vector<Point3D> &points)
@@ -883,7 +894,6 @@ void render3D(std::vector<Point3D> &points)
 
     while (!WindowShouldClose())
     {
-        // UpdateCamera(&camera, CAMERA_PERSPECTIVE);
         float dt = GetFrameTime();
 
         Vector2 mousePos = GetMousePosition();
@@ -891,6 +901,7 @@ void render3D(std::vector<Point3D> &points)
 
         float mouseDeltaX = mouseDelta.x * 0.007f;
         float mouseDeltaY = mouseDelta.y * 0.007f;
+        float mouseWheel = -GetMouseWheelMove();
 
         BeginDrawing();
         ClearBackground(WHITE);
@@ -910,11 +921,13 @@ void render3D(std::vector<Point3D> &points)
 
         if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
         {
-            // float x = camera.position.x * cos(mouseDeltaX) - camera.position.y * sin(mouseDeltaY);
-            // float y = camera.position.x * sin(mouseDeltaX) + camera.position.y * cos(mouseDeltaY);
-            // float z = camera.position.z + camera.position.x * sin(mouseDeltaX);
-            // camera.position = Vector3{x, y, z};
             camera.position = applyRotation(camera.position, mouseDeltaX, mouseDeltaY);
+            std::cout << camera.position.x << " " << camera.position.y << " " << camera.position.z << std::endl;
+        }
+
+        if (mouseWheel != 0.0f)
+        {
+            camera.position = applyZoom(camera.position, pow(1.04, mouseWheel));
             std::cout << camera.position.x << " " << camera.position.y << " " << camera.position.z << std::endl;
         }
 
