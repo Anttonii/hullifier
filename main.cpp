@@ -11,6 +11,7 @@
 #include <variant>
 
 #include "raylib.h"
+#include "raymath.h"
 
 #define RAYGUI_IMPLEMENTATION
 #include "raygui.h"
@@ -27,7 +28,7 @@ struct Point2D
     {
     }
 
-    Point2D(int x, int y) : x(x), y(y)
+    Point2D(int _x, int _y) : x(_x), y(_y)
     {
     }
 
@@ -47,15 +48,15 @@ struct Point2D
  */
 struct Point3D
 {
-    int x;
-    int y;
-    int z;
+    float x;
+    float y;
+    float z;
 
-    Point3D() : x(0), y(0), z(0)
+    Point3D() : x(0.0f), y(0.0f), z(0.0f)
     {
     }
 
-    Point3D(int x, int y, int z) : x(x), y(y), z(z)
+    Point3D(float _x, float _y, float _z) : x(_x), y(_y), z(_z)
     {
     }
 
@@ -67,6 +68,11 @@ struct Point3D
     bool operator!=(const Point3D &p2)
     {
         return this->x != p2.x || this->y != p2.y || this->z != p2.z;
+    }
+
+    Vector3 toVector() const
+    {
+        return Vector3{this->x, this->y, this->z};
     }
 };
 
@@ -147,20 +153,29 @@ PointData readFile(std::string &path)
         // Catch errors when stoi fails.
         try
         {
-            int x = std::stoi(splitted[0]);
-            int y = std::stoi(splitted[1]);
-
             if (splitted.size() == 2) // 2D point
             {
+                int x = std::stoi(splitted[0]);
+                int y = std::stoi(splitted[1]);
+
                 if (x > 500 || x < 0 || y > 500 || y < 0)
+                {
                     std::cout << "Invalid point in input, x and y values must be in range [0,500]." << std::endl;
+                    continue;
+                }
                 points2D.push_back(Point2D{x, y});
             }
             else if (splitted.size() == 3) // 3D point
             {
-                int z = std::stoi(splitted[2]);
-                if (x > 500 || x < 0 || y > 500 || y < 0 || z > 500 || z < 0)
-                    std::cout << "Invalid point in input, x, y, z values must be in range [0,500]." << std::endl;
+                float x = std::stof(splitted[0]);
+                float y = std::stof(splitted[1]);
+                float z = std::stof(splitted[2]);
+
+                if (x > 1.0 || x < -1.0 || y > 1.0 || y < -1.0 || z > 1.0 || z < -1.0)
+                {
+                    std::cout << "Invalid point in input, x, y, z values must be in range [-1,1]." << std::endl;
+                    continue;
+                }
                 points3D.push_back(Point3D{x, y, z});
                 is3D = true; // We have detected 3D points
             }
@@ -826,15 +841,90 @@ void render2D(std::vector<Point2D> &points)
 }
 
 /**
+ * Applies rotation around x and y axis to a vector.
+ */
+Vector3 applyRotation(Vector3 vec, float rotx, float roty)
+{
+    Matrix ry = {cos(rotx), 0.0f, sin(rotx), 0.0f,
+                 0.0f, 1.0f, 0.0f, 0.0f,
+                 -sin(rotx), 0.0f, cos(rotx), 0.0f,
+                 0.0f, 0.0f, 0.0f, 1.0f};
+
+    Matrix rx = {1.0f, 0.0f, 0.0f, 0.0f,
+                 0.0f, cos(roty), -sin(roty), 0.0f,
+                 0.0f, sin(roty), cos(roty), 0.0f,
+                 0.0f, 0.0f, 0.0f, 1.0f};
+
+    // Matrix rz = {cos(rotz), -sin(rotz), 0.0f, 0.0f,
+    //              sin(rotz), cos(rotz), 0.0f, 0.0f,
+    //              0.0f, 0.0f, 1.0f, 0.0f,
+    //              0.0f, 0.0f, 0.0f, 1.0f};
+
+    // Matrix rxyz = MatrixMultiply(MatrixMultiply(rz, ry), rx);
+
+    Matrix rxyz = MatrixMultiply(ry, rx);
+    return Vector3Transform(vec, rxyz);
+}
+
+/**
  * The main rendering function when operating in 3-dimensions.
  */
 void render3D(std::vector<Point3D> &points)
 {
+    Camera3D camera{};
+    camera.position = Vector3{0.0f, 1.0f, -1.5f};
+    camera.target = Vector3{0.0f, 0.0f, 0.0f};
+    camera.up = Vector3{0.0f, 1.0f, 0.0f};
+    camera.fovy = 60.0f;
+    camera.projection = CAMERA_PERSPECTIVE;
+
+    std::set<int> keysPressed;
+    Vector2 lastMouse = Vector2{0.0f, 0.0f};
+
     while (!WindowShouldClose())
     {
+        // UpdateCamera(&camera, CAMERA_PERSPECTIVE);
+        float dt = GetFrameTime();
+
+        Vector2 mousePos = GetMousePosition();
+        Vector2 mouseDelta = Vector2Subtract(mousePos, lastMouse);
+
+        float mouseDeltaX = mouseDelta.x * 0.007f;
+        float mouseDeltaY = mouseDelta.y * 0.007f;
+
         BeginDrawing();
         ClearBackground(WHITE);
+        BeginMode3D(camera);
+
+        for (auto const point : points)
+        {
+            DrawSphere(point.toVector(), 0.05f, BLACK);
+        }
+
+        DrawLine3D(Vector3{-5.0f, 0.0f, 0.0f}, Vector3{5.0f, 0.0f, 0.0f}, BLACK);
+        DrawLine3D(Vector3{0.0f, -5.0f, 0.0f}, Vector3{0.0f, 5.0f, 0.0f}, BLACK);
+        DrawLine3D(Vector3{0.0f, 0.0f, -5.0f}, Vector3{0.0f, 0.0f, 5.0f}, BLACK);
+
+        EndMode3D();
         EndDrawing();
+
+        if (IsMouseButtonDown(MOUSE_LEFT_BUTTON))
+        {
+            // float x = camera.position.x * cos(mouseDeltaX) - camera.position.y * sin(mouseDeltaY);
+            // float y = camera.position.x * sin(mouseDeltaX) + camera.position.y * cos(mouseDeltaY);
+            // float z = camera.position.z + camera.position.x * sin(mouseDeltaX);
+            // camera.position = Vector3{x, y, z};
+            camera.position = applyRotation(camera.position, mouseDeltaX, mouseDeltaY);
+            std::cout << camera.position.x << " " << camera.position.y << " " << camera.position.z << std::endl;
+        }
+
+        for (auto const &key : keysPressed)
+        {
+            if (IsKeyUp(key) && keysPressed.count(key))
+                keysPressed.erase(key);
+        }
+
+        lastMouse = mousePos;
     }
 }
 
