@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <set>
 #include <variant>
+#include <deque>
 
 #include "raylib.h"
 #include "raymath.h"
@@ -871,10 +872,109 @@ Vector3 applyRotation(Vector3 vec, float rotx, float roty)
  */
 Vector3 applyZoom(Vector3 vec, float zoom)
 {
-    Vector3 min{-1.5f, -1.5f, -3.0f};
-    Vector3 max{1.5f, 1.5f, 3.0f};
+    Vector3 min{-3.5f, -3.5f, -3.0f};
+    Vector3 max{3.5f, 3.5f, 3.0f};
 
     return Vector3Clamp(Vector3Scale(vec, zoom), min, max);
+}
+
+/**
+ * Calculates the volume of a tetrahedron produced with given set of points.
+ */
+float calculateTetrahderonVolume(std::vector<Point3D> &points)
+{
+    if (points.size() != 4)
+    {
+        return -1.0f;
+    }
+
+    Vector3 v1 = Vector3Subtract(points[1].toVector(), points[0].toVector());
+    Vector3 v2 = Vector3Subtract(points[2].toVector(), points[0].toVector());
+    Vector3 v3 = Vector3Subtract(points[3].toVector(), points[0].toVector());
+    return abs(Vector3DotProduct(v1, Vector3CrossProduct(v2, v3))) / 6.0f;
+}
+
+/**
+ * 3D starting point, finds the largest 4 point forming tetrahedron.
+ */
+std::vector<Point3D> findTetrahedron(std::vector<Point3D> &points)
+{
+    std::vector<Point3D> result;
+
+    float maxVolume = -1.0f;
+
+    std::deque<std::vector<Point3D>> queue;
+    for (auto const &p : points)
+        queue.push_back(std::vector<Point3D>{p});
+
+    while (!queue.empty())
+    {
+        auto top = queue.front();
+        queue.pop_front();
+
+        if (top.size() == 4)
+        {
+            float volume = calculateTetrahderonVolume(top);
+            if (volume > maxVolume)
+            {
+                maxVolume = volume;
+                result = std::vector<Point3D>(top.begin(), top.end());
+            }
+            continue;
+        }
+
+        for (auto const &p : points)
+        {
+            if (std::find(top.begin(), top.end(), p) == top.end())
+            {
+                std::vector<Point3D> newVec(top.begin(), top.end());
+                newVec.push_back(p);
+                queue.push_back(newVec);
+            }
+        }
+    }
+
+    return result;
+}
+
+/**
+ * Utility function for drawing a face between some set of points in 3d space.
+ */
+void drawFace(const std::vector<Point3D> &points, Color color, bool drawOutline)
+{
+    if (points.size() < 3)
+        return;
+
+    Point3D pivot = points[0];
+    for (int i = 0; i <= points.size() - 3; i++)
+    {
+        DrawTriangle3D(pivot.toVector(), points[i + 1].toVector(), points[i + 2].toVector(), color);
+        DrawTriangle3D(points[i + 2].toVector(), points[i + 1].toVector(), pivot.toVector(), color);
+    }
+
+    for (int j = 1; j < points.size(); j++)
+        DrawLine3D(points[j - 1].toVector(), points[j].toVector(), BLACK);
+}
+
+/**
+ * Draws a tetrahedron formed from 4 points.
+ */
+void drawTetrahedron(const std::vector<Point3D> &points, Color color)
+{
+    if (points.size() != 4)
+    {
+        std::cout << "Invalid tetrahedron configuration, the set of points should size of 4, instead it has: " << points.size() << std::endl;
+        return;
+    }
+
+    // Triangle between x0, x1, x2
+    drawFace(std::vector<Point3D>{points[0], points[1], points[2]}, color, true);
+    // Triangle between x0, x2, x3
+    drawFace(std::vector<Point3D>{points[0], points[2], points[3]}, color, true);
+    // Triangle between x1, x2, x3
+    drawFace(std::vector<Point3D>{points[1], points[2], points[3]}, color, true);
+    // Triangle between x0, x1, x3
+    drawFace(std::vector<Point3D>{points[0], points[1], points[3]}, color, true);
 }
 
 /**
@@ -883,7 +983,7 @@ Vector3 applyZoom(Vector3 vec, float zoom)
 void render3D(std::vector<Point3D> &points)
 {
     Camera3D camera{};
-    camera.position = Vector3{0.0f, 1.0f, -1.5f};
+    camera.position = Vector3{-2.5f, 1.5f, 2.5f};
     camera.target = Vector3{0.0f, 0.0f, 0.0f};
     camera.up = Vector3{0.0f, 1.0f, 0.0f};
     camera.fovy = 60.0f;
@@ -891,6 +991,8 @@ void render3D(std::vector<Point3D> &points)
 
     std::set<int> keysPressed;
     Vector2 lastMouse = Vector2{0.0f, 0.0f};
+
+    std::vector<Point3D> tetrahedron = findTetrahedron(points);
 
     while (!WindowShouldClose())
     {
@@ -912,9 +1014,11 @@ void render3D(std::vector<Point3D> &points)
             DrawSphere(point.toVector(), 0.05f, BLACK);
         }
 
-        DrawLine3D(Vector3{-5.0f, 0.0f, 0.0f}, Vector3{5.0f, 0.0f, 0.0f}, BLACK);
-        DrawLine3D(Vector3{0.0f, -5.0f, 0.0f}, Vector3{0.0f, 5.0f, 0.0f}, BLACK);
-        DrawLine3D(Vector3{0.0f, 0.0f, -5.0f}, Vector3{0.0f, 0.0f, 5.0f}, BLACK);
+        DrawLine3D(Vector3{-25.0f, 0.0f, 0.0f}, Vector3{25.0f, 0.0f, 0.0f}, BLACK);
+        DrawLine3D(Vector3{0.0f, -25.0f, 0.0f}, Vector3{0.0f, 25.0f, 0.0f}, BLACK);
+        DrawLine3D(Vector3{0.0f, 0.0f, -25.0f}, Vector3{0.0f, 0.0f, 25.0f}, BLACK);
+
+        drawTetrahedron(tetrahedron, RED);
 
         EndMode3D();
         EndDrawing();
@@ -950,10 +1054,11 @@ int main(int argc, char *argv[])
         std::cin >> path;
         std::cout << "Loading data from path: " << path << std::endl;
     }
-    else
+    else if (argc == 2)
+    {
         path = std::string(argv[1]);
-
-    if (argc > 2)
+    }
+    else
     {
         std::cout << "Hullifier only acceps a single command line argument being the path of the input." << std::endl;
         return 0;
@@ -964,6 +1069,7 @@ int main(int argc, char *argv[])
     int width = 700;
     int height = 520;
     InitWindow(width, height, "Hullifier");
+    SetTargetFPS(120);
 
     if (std::holds_alternative<std::vector<Point2D>>(points))
     {
